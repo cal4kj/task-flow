@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Task flow",
+  "version": "1.0",
+  "description": "A to-do list on your new tab page, built with React.",
+  "permissions": [
+    "storage"
+  ],
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "icons": {
+    "16": "images/icon16.svg",
+    "48": "images/icon48.svg",
+    "128": "images/icon128.svg"
+  }
+}
