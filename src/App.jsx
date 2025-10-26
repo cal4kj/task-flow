@@ -3,6 +3,14 @@ import { Editor } from '@toast-ui/react-editor';
 import '@toast-ui/editor/dist/toastui-editor.css';
 import Sortable from 'sortablejs';
 import { marked } from 'marked';
+
+marked.use({
+  renderer: {
+    link(href, title, text) {
+      return `<a href="${href.href}" target="_blank" rel="noopener noreferrer">${href.text}</a>`;
+    }
+  }
+});
 import './App.css';
 import { loadTasks, saveTasks } from './storage.js';
 
@@ -170,8 +178,8 @@ function App() {
                                     </div>
                                 ) : (
                                     <>
-                                        <div className={`task-content ${task.isCompleted ? 'completed' : ''}`} onClick={() => linkingState.active ? handleSetDependency(task) : setEditingTaskId(task.id)}>
-                                            <div dangerouslySetInnerHTML={{ __html: marked.parse(task.content || '<p><em>Click to add content...</em></p>') }} />
+                                        <div className={`task-content ${task.isCompleted ? 'completed' : ''}`} onDoubleClick={() => linkingState.active ? handleSetDependency(task) : setEditingTaskId(task.id)}>
+                                            <div dangerouslySetInnerHTML={{ __html: marked.parse(task.content || '<p><em>Double-click to add content...</em></p>') }} />
                                         </div>
                                         {task.dependsOn ? (
                                             <button onClick={() => handleRemoveDependency(task.id)} className="btn btn-link btn-sm dependency-btn" title="Remove dependency">-🔗</button>
