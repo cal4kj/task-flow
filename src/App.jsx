@@ -3,16 +3,16 @@ import { Editor } from '@toast-ui/react-editor';
 import '@toast-ui/editor/dist/toastui-editor.css';
 import Sortable from 'sortablejs';
 import { marked } from 'marked';
+import './App.css';
+import { loadTasks, saveTasks } from './storage.js';
 
 marked.use({
   renderer: {
-    link(href, title, text) {
+    link(href) {
       return `<a href="${href.href}" target="_blank" rel="noopener noreferrer">${href.text}</a>`;
     }
   }
 });
-import './App.css';
-import { loadTasks, saveTasks } from './storage.js';
 
 // --- Helper Components & Functions ---
 const isCircularDependency = (childId, potentialParentId, tasks) => {
@@ -66,15 +66,11 @@ function App() {
                 handle: '.drag-handle',
                 animation: 150,
                 onEnd: (evt) => {
-                    const movedItemId = parseInt(evt.item.dataset.id, 10);
-                    const targetItemId = evt.to.children[evt.newIndex]?.dataset.id ? parseInt(evt.to.children[evt.newIndex].dataset.id, 10) : null;
                     setTasks(currentTasks => {
                         const newTasks = [...currentTasks];
-                        const movedItem = newTasks.find(t => t.id === movedItemId);
-                        const fromIndex = newTasks.findIndex(t => t.id === movedItemId);
-                        newTasks.splice(fromIndex, 1);
-                        const toIndex = targetItemId ? newTasks.findIndex(t => t.id === targetItemId) : newTasks.length;
-                        newTasks.splice(toIndex, 0, movedItem);
+                        const movedItem = {... currentTasks[evt.oldIndex]};
+                        newTasks.splice(evt.oldIndex, 1);
+                        newTasks.splice(evt.newIndex, 0, movedItem);
                         return newTasks;
                     });
                 }
@@ -104,11 +100,19 @@ function App() {
         ));
     };
 
-    const handleEditorBlur = (task) => {
+    const handleSaveTask = (task) => {
         if (task.content.trim() === '') {
             setTasks(currentTasks => currentTasks.filter(t => t.id !== task.id));
         }
         setEditingTaskId(null);
+    };
+
+    const handleEditorKeydown = (event, task) => {
+        // Check for Command+Enter (Mac) or Ctrl+Enter (Windows/Linux)
+        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+            handleSaveTask(task);
+            event.preventDefault();
+        }
     };
 
     const handleStartLinking = (childId) => setLinkingState({ active: true, childId });
@@ -121,6 +125,40 @@ function App() {
 
     const handleRemoveDependency = (childId) => {
         setTasks(tasks.map(task => task.id === childId ? { ...task, dependsOn: null } : task));
+    };
+
+    const handleExportTasks = () => {
+        const json = JSON.stringify(tasks, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'tasks.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImportTasks = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedTasks = JSON.parse(e.target.result);
+                // Basic validation to ensure it's an array of objects
+                if (Array.isArray(importedTasks) && importedTasks.every(item => typeof item === 'object' && item !== null)) {
+                    setTasks(importedTasks);
+                } else {
+                    alert('Invalid JSON format. Please provide a JSON array of tasks.');
+                }
+            } catch (error) {
+                alert('Error parsing JSON file: ' + error.message);
+            }
+        };
+        reader.readAsText(file);
     };
 
     // --- Rendering Logic ---
@@ -164,17 +202,27 @@ function App() {
                                 
                                 {isBeingEdited ? (
                                     <div className="w-100">
-                                        <Editor 
-                                            ref={inlineEditorRef} 
-                                            initialValue={task.content} 
-                                            height="160px" 
-                                            initialEditType="markdown" 
-                                            hideModeSwitch={true} 
-                                            toolbarItems={[]} 
-                                            previewStyle="vertical"
-                                            onChange={() => handleEditorChange(task.id)}
-                                            onBlur={() => handleEditorBlur(task)}
-                                        />
+                                        <div onKeyDown={(e) => handleEditorKeydown(e, task)}>
+                                            <Editor 
+                                                ref={inlineEditorRef} 
+                                                initialValue={task.content} 
+                                                height="160px" 
+                                                initialEditType="markdown" 
+                                                hideModeSwitch={true} 
+                                                toolbarItems={[]} 
+                                                previewStyle="vertical"
+                                                onChange={() => handleEditorChange(task.id)}
+                                            />
+                                        </div>
+                                        <div className="text-end">
+                                            <button 
+                                                onClick={() => handleSaveTask(task)} 
+                                                className="btn btn-success btn-sm mt-2"
+                                                title="Save (Cmd+Enter)"
+                                            >
+                                                ✓ Save
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <>
@@ -194,11 +242,29 @@ function App() {
                     );
                 })}
             </ul>
-            <div className="action-button">
+            <div className="action-button d-flex justify-content-between align-items-center mt-3">
                 {linkingState.active ? (
                     <button onClick={() => setLinkingState({ active: false, childId: null })} className="btn btn-warning">Cancel Linking</button>
                 ) : (
-                    <button onClick={handleAddTask} className="btn btn-primary">+</button>
+                    <div className="btn-group">
+                        <button type="button" className="btn btn-primary" onClick={handleAddTask}>+</button>
+                        <button type="button" className="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span className="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul className="dropdown-menu">
+                            <li><a className="dropdown-item" href="#" onClick={handleExportTasks}>Export Tasks</a></li>
+                            <li>
+                                <input
+                                    type="file"
+                                    accept=".json"
+                                    onChange={handleImportTasks}
+                                    style={{ display: 'none' }}
+                                    id="import-file-input"
+                                />
+                                <label className="dropdown-item" htmlFor="import-file-input" style={{ cursor: 'pointer' }}>Import Tasks</label>
+                            </li>
+                        </ul>
+                    </div>
                 )}
             </div>
         </div>
